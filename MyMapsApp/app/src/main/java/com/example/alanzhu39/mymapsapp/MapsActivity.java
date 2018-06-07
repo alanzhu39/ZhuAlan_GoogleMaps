@@ -42,7 +42,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private boolean isNetworkEnabled = false;
     private boolean canGetLocation = false;
     private boolean gotMyLocationOneTime;
-    private double latitude, longitude;
+    private double currLatitude, currLongitude;
+    private double prevLatitude, prevLongitude;
     private boolean notTrackingMyLocation = true;
 
     private static final long MIN_TIME_BW_UPDATES = 1999 * 5; //updates in ms
@@ -74,7 +75,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap = googleMap;
 
         // Add a marker in Sydney and move the camera
-        LatLng annArbor = new LatLng(42.2, 83.7);
+        LatLng annArbor = new LatLng(42.2, 276.3);
         mMap.addMarker(new MarkerOptions().position(annArbor).title("Born here"));
         mMap.moveCamera(CameraUpdateFactory.newLatLng(annArbor));
 
@@ -94,6 +95,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         gotMyLocationOneTime = false;
         getLocation();
         locationSearch = (EditText) findViewById(R.id.editText_addr);
+        currLongitude = 0;
+        currLatitude = 0;
+    }
+
+    public void changeView(View view) {
+        if(mMap.getMapType() == 1) {
+            mMap.setMapType(2);
+        }
+        else {
+            mMap.setMapType(1);
+        }
     }
 
     public void onSearch(View view) {
@@ -163,6 +175,83 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         }
 
+    }
+
+    public void onDirectionalSearch(View view) {
+        String location = locationSearch.getText().toString();
+
+        List<Address> addressList = null;
+
+        prevLongitude = currLongitude;
+        prevLatitude = currLatitude;
+
+        LatLng userLocation = null;
+        try {
+            if (locationManager != null) {
+                Log.d("MyMapsApp", "onSearch: locationManager is not null");
+                if ((myLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)) != null) {
+                    userLocation = new LatLng(myLocation.getLatitude(), myLocation.getLongitude());
+                    Log.d("MyMapsApp", "onSearch: using NETWORK_PROVIDER userLocation is " + myLocation.getLatitude() + ", " + myLocation.getLongitude());
+                    Toast.makeText(this, "UserLoc" + myLocation.getLatitude() + myLocation.getLongitude(), Toast.LENGTH_SHORT);
+                } else if ((myLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)) != null) {
+                    userLocation = new LatLng(myLocation.getLatitude(), myLocation.getLongitude());
+                    Log.d("MyMapsApp", "onSearch: using GPS_PROVIDER userLocation is " + myLocation.getLatitude() + ", " + myLocation.getLongitude());
+                    Toast.makeText(this, "UserLoc" + myLocation.getLatitude() + myLocation.getLongitude(), Toast.LENGTH_SHORT);
+                } else {
+                    Log.d("MyMapsApp", "onSearch: myLocation is null from getLastKnownLocation with Network provider");
+                }
+            } else {
+                Log.d("MyMapsApp", "onSearch: myLocation is null!");
+            }
+        } catch (SecurityException | IllegalArgumentException e) {
+            Log.d("MyMapsApp", "Exception getLastKnownLocation");
+            Toast.makeText(this, "Exception getLastKnownLocation", Toast.LENGTH_SHORT);
+        }
+
+        currLongitude = userLocation.longitude;
+        currLatitude = userLocation.latitude;
+
+        double direction = (currLongitude - prevLongitude)/(currLatitude - prevLatitude);
+
+        if (!location.matches("")) {
+            Log.d("MyMapsApp", "onSearch: location field is populated");
+
+            Geocoder geocoder = new Geocoder(this, Locale.US);
+            Log.d("MyMapsApp", "onSearch: created a new Geocoder");
+
+            try {
+                addressList = geocoder.getFromLocationName(location, 10000,
+                        userLocation.latitude - (5.0 / 60.0),
+                        userLocation.longitude - (5.0 / 60.0),
+                        userLocation.latitude + (5.0 / 60.0),
+                        userLocation.longitude + (5.0 / 60.0));
+                Log.d("MyMapsApp", "onSearch: created addressList");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            if (!addressList.isEmpty()) {
+                Log.d("MyMapsApp", "Address list size= " + addressList.size());
+
+                for (int i = 0; i < addressList.size(); i++) {
+                    Address address = addressList.get(i);
+                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+
+                    if(currLongitude >= prevLongitude) {
+                        if(address.getLongitude() < (-(1/direction) * (address.getLatitude()) + currLongitude))
+                            return;
+                    }
+                    else {
+                        if(address.getLongitude() >= (-(1/direction) * (address.getLatitude()) + currLongitude))
+                            return;
+                    }
+
+                    mMap.addMarker(new MarkerOptions().position(latLng).title(i + ": " + address.getSubThoroughfare()
+                            + " " + address.getThoroughfare()));
+                    Log.d("MyMapsApp", "onSearch: added Marker");
+                    mMap.animateCamera(CameraUpdateFactory.newLatLng(latLng));
+                }
+            }
+        }
     }
 
 
